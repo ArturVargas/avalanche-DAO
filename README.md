@@ -29,7 +29,7 @@ For example if you have a hundred of the governance tokens but you deposited onl
 
 On REMIX we click the new file icon and put some name, in my case my file name is `MyDAO.sol`
 
-![New file](assets/newFile-Dao.png)
+<img src="assets/newFile-Dao.png" width="800">
 
 and we add the basic lines of code:
 
@@ -37,8 +37,7 @@ and we add the basic lines of code:
 `pragma` Specifies that the source code is written for Solidity version 0.7.0 or a newer version of the language up to, but not including version 0.9.0.  
 `contract MyDAO {...}` specifies the name and a new block of code for our contract.
 ``
-
-![firstLines](assets/firstLines.png)
+<img src="assets/firstLines.png" width="800">
 
 ### Step 2: Defining our DAO functions
 
@@ -59,7 +58,8 @@ and we need import IERC20 template from [openzeppelin](https://openzeppelin.com/
 For the proposal format we defined a group with custom properties, the properties for our proposal are:
 
 * Author which is an address from the account that create a proposal.
-* Hash that will help us to identify a proposal.
+* Id that will help us to identify a proposal.
+* Name of the proposal.
 * Creation date, that allow us to set a period of time for allow the voting.
 * Voting options, in this case we will keep it simple(Yes / NO).  
 * Number of Votes for Yes and Votes for No this will allow us set an status for the proposal when number of votes for any option be greater than fifty percent.
@@ -77,8 +77,9 @@ for the other proposal properties we can use an `struct` type.
 
 ```moonscript
     struct Proposal {
+        uint256 id;
         address author;
-        bytes32 hash;
+        string name;
         uint256 createdAt;
         uint256 votesForYes;
         uint256 votesForNo;
@@ -100,8 +101,9 @@ contract MyDAO {
     enum VotingOptions { Yes, No }
     enum Status { Accepted, Rejected, Pending }
     struct Proposal {
+        uint256 id;
         address author;
-        bytes32 hash;
+        string name;
         uint256 createdAt;
         uint256 votesForYes;
         uint256 votesForNo;
@@ -115,9 +117,9 @@ Now we need to store all the proposals created for our DAO, we need to be sure t
 
 ```
 // store all proposals
-mapping(bytes32 => Proposal) public proposals;
+mapping(uint => Proposal) public proposals;
 // who already votes for who and to avoid vote twice
-mapping(address => mapping(bytes32 => bool)) public votes;
+mapping(address => mapping(uint => bool)) public votes;
 // one share for governance tokens
 mapping(address => uint256) public shares;
 uint public totalShares;
@@ -126,6 +128,7 @@ IERC20 public token;
 // the user need minimum 25 AVAX to create a proposal.
 uint constant CREATE_PROPOSAL_MIN_SHARE = 25 * 10 ** 18;
 uint constant VOTING_PERIOD = 7 days;
+uint public nextProposalId;
 ```
 
 ### Step 4: Deposit and Withdraw function for the DAO
@@ -173,8 +176,9 @@ contract MyDAO {
     enum VotingOptions { Yes, No }
     enum Status { Accepted, Rejected, Pending }
     struct Proposal {
+        uint256 id;
         address author;
-        bytes32 hash;
+        string name;
         uint256 createdAt;
         uint256 votesForYes;
         uint256 votesForNo;
@@ -182,15 +186,18 @@ contract MyDAO {
     }
 
     // store all proposals
-    mapping(bytes32 => Proposal) public proposals;
-    // who votes for who to avoid vote twice
-    mapping(address => mapping(bytes32 => bool)) public votes;
+    mapping(uint => Proposal) public proposals;
+    // who already votes for who and to avoid vote twice
+    mapping(address => mapping(uint => bool)) public votes;
     // one share for governance tokens
     mapping(address => uint256) public shares;
     uint public totalShares;
+    // the IERC20 allow us to use avax like our governance token.
     IERC20 public token;
+    // the user need minimum 25 AVAX to create a proposal.
     uint constant CREATE_PROPOSAL_MIN_SHARE = 25 * 10 ** 18;
     uint constant VOTING_PERIOD = 7 days;
+    uint public nextProposalId;
     
     constructor() {
         token = IERC20(0xA048B6a5c1be4b81d99C3Fd993c98783adC2eF70); // AVAX address
@@ -213,34 +220,35 @@ contract MyDAO {
 
 ### Step 5: Create a Proposal and Vote functions
 
-For our `createProposal` function we will add the condition that if the user does not have minimum 25 AVAX tokens He cannot create a new proposal, and validate if the proposal exist.
+For our `createProposal` function we will add the condition that if the user does not have minimum 25 AVAX tokens He cannot create a new proposal.
 
 ```moonscript
-function createProposal(bytes32 proposalHash) external {
+function createProposal(string memory name) external {
     // validate the user has enough shares to create a proposal
     require(shares[msg.sender] >= CREATE_PROPOSAL_MIN_SHARE, 'Not enough shares to create a proposal');
-    require(proposals[proposalHash].hash == bytes32(0), 'proposal already exist');
-    proposals[proposalHash] = Proposal(
-            msg.sender,
-            proposalHash,
-            block.timestamp,
-            0,
-            0,
-            Status.Pending
-        );
+    
+    proposals[nextProposalId] = Proposal(
+        nextProposalId,
+        msg.sender,
+        name,
+        block.timestamp,
+        0,
+        0,
+        Status.Pending
+    );
+    nextProposalId++;
 }
 ```
 
-For the `Vote` function we need to receive the hash for the proposal and the vote choice, we will validate that the user has not voted already and the vote period is currently open.  
+For the `Vote` function we need to receive the id for the proposal and the vote choice, we will validate that the user has not voted already and the vote period is currently open.  
 Also we validate if the proposal has more than fifty percent of votes in one option we need to change the proposal status to Accepted or Rejected.
 
 ```moonscript
-function vote(bytes32 proposalHash, VotingOptions _vote) external {
-    Proposal storage proposal = proposals[proposalHash];
-    require(proposals[proposalHash].hash != bytes32(0), 'proposal already exist');
-    require(votes[msg.sender][proposalHash] == false, 'already voted');
+function vote(uint _proposalId, VotingOptions _vote) external {
+    Proposal storage proposal = proposals[_proposalId];
+    require(votes[msg.sender][_proposalId] == false, 'already voted');
     require(block.timestamp <= proposal.createdAt + VOTING_PERIOD, 'Voting period is over');
-    votes[msg.sender][proposalHash] = true;
+    votes[msg.sender][_proposalId] = true;
     if(_vote == VotingOptions.Yes) {
         proposal.votesForYes += shares[msg.sender];
         if(proposal.votesForYes * 100 / totalShares > 50) {
@@ -257,6 +265,26 @@ function vote(bytes32 proposalHash, VotingOptions _vote) external {
 
 Finally our DAO contract looks like this.
 
-![daoSC](assets/daoSC.png)
+<img src="assets/daoSC.png" width="850">
 
 ### Step 6: Deploy our DAO contract on FUJI
+
+Now we need compile our contract, I'm using the 0.8.0 version compiler, and click on the `Compile` button.
+
+<img src="assets/compiler.png" width="350">
+
+In the environment section we choose the `Injected Web3` option, in account we chose an account from our metamask plugin in the FUJI network, make sure that your account have the necessary avax for the deploy and the minimum for create a proposal.   
+[Here you can find the Faucet](https://faucet.avax-test.network/).  
+Click on the `Deploy` button and confirm the transaction in REMIX and Metamask and await for a few seconds.  
+
+<img src="assets/deploySc.png" width="350">
+
+<img src="assets/confirmDeploy.png" width="650">
+
+<img src="assets/metamask.png" width="300">
+
+If the contract is deployed successfully on FUJI we can see the succes transaction on the REMIX inspector.
+
+<img src="assets/remixTx.png" width="650">
+
+Now we can test the different functions for our DAO.
